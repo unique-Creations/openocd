@@ -29,12 +29,17 @@
 #define SAMD_DSU_DID		0x18		/* Device ID register */
 #define SAMD_DSU_CTRL_EXT	0x100		/* CTRL register, external access */
 
-#define SAMD_NVMCTRL_CTRLA		0x00	/* NVM control A register */
+#define SAMD_NVMCTRL_CTRLA		0x1000	/* NVM control A register */
 #define SAMD_NVMCTRL_CTRLB		0x04	/* NVM control B register */
+#define SAML_NVMCTRL_CTRLC		0x1008	/* NVM control C register + 0x1000 */
 #define SAMD_NVMCTRL_PARAM		0x08	/* NVM parameters register */
+#define SAML_NVMCTRL_PARAM		0x1024  /* NVM parameters register + 0x1000 */
 #define SAMD_NVMCTRL_INTFLAG	0x14	/* NVM Interrupt Flag Status & Clear */
+#define SAML_NVM_INTFLAG		0x1014	/* NVM Interrupt Flag Status + 0x1000 */
 #define SAMD_NVMCTRL_STATUS		0x18	/* NVM status register */
+#define SAML_NVMCTRL_STATUS		0x1018	/* NVM status register + 0x1000 */
 #define SAMD_NVMCTRL_ADDR		0x1C	/* NVM address register */
+#define SAML_NVMCTRL_ADDR		0x101C	/* NVM address register + 0x1000 */
 #define SAMD_NVMCTRL_LOCK		0x20	/* NVM Lock section register */
 
 #define SAMD_CMDEX_KEY		0xA5UL
@@ -55,12 +60,17 @@
 
 /* NVMCTRL bits */
 #define SAMD_NVM_CTRLB_MANW 0x80
+#define SAML_NVM_CTRLC_MANW 0x01
 
 /* NVMCTRL_INTFLAG bits */
 #define SAMD_NVM_INTFLAG_READY 0x01
 
+/* NVMCTRL_INTFLAG bits */
+#define SAML_NVM_STATUS_READY 0x04
+
 /* Known identifiers */
 #define SAMD_PROCESSOR_M0	0x01
+#define SAMD_PROCESSOR_M23	0x02
 #define SAMD_FAMILY_D		0x00
 #define SAMD_FAMILY_L		0x01
 #define SAMD_FAMILY_C		0x02
@@ -251,6 +261,11 @@ static const struct samd_part saml21_parts[] = {
 	{ 0x2D, "SAMR35J16", 64, 12 },
 };
 
+/* Known SAML11 parts. */
+static const struct samd_part saml11_parts[] = {
+	{ 0x03, "SAML11D16A", 64, 16 },
+};
+
 /* Known SAML22 parts. */
 static const struct samd_part saml22_parts[] = {
 	{ 0x00, "SAML22N18A", 256, 32 },
@@ -332,6 +347,9 @@ static const struct samd_family samd_families[] = {
 	{ SAMD_PROCESSOR_M0, SAMD_FAMILY_L, SAMD_SERIES_21,
 		saml21_parts, ARRAY_SIZE(saml21_parts),
 		0xFFFF03FFFC01FF77ULL },
+	{ SAMD_PROCESSOR_M23, SAMD_FAMILY_L, SAMD_SERIES_11,
+		saml11_parts, ARRAY_SIZE(saml11_parts),
+		0x1BFFFF00FFBFULL },
 	{ SAMD_PROCESSOR_M0, SAMD_FAMILY_L, SAMD_SERIES_22,
 		saml22_parts, ARRAY_SIZE(saml22_parts),
 		0xFFFF03FFFC01FF77ULL },
@@ -418,7 +436,8 @@ static int samd_get_flash_page_info(struct target *target,
 	int res;
 	uint32_t param;
 
-	res = target_read_u32(target, SAMD_NVMCTRL + SAMD_NVMCTRL_PARAM, &param);
+	// res = target_read_u32(target, SAMD_NVMCTRL + SAMD_NVMCTRL_PARAM, &param);
+	res = target_read_u32(target, SAMD_NVMCTRL + SAML_NVMCTRL_PARAM, &param);
 	if (res == ERROR_OK) {
 		/* The PSZ field (bits 18:16) indicate the page size bytes as 2^(3+n)
 		 * so 0 is 8KB and 7 is 1024KB. */
@@ -512,23 +531,23 @@ static int samd_check_error(struct target *target)
 
 	do {
 		ret = target_read_u8(target,
-			SAMD_NVMCTRL + SAMD_NVMCTRL_INTFLAG, &intflag);
+			SAMD_NVMCTRL + SAML_NVMCTRL_STATUS, &intflag);
 		if (ret != ERROR_OK) {
 			LOG_ERROR("Can't read NVM intflag");
 			return ret;
 		}
-		if (intflag & SAMD_NVM_INTFLAG_READY)
+		if (intflag & SAML_NVM_STATUS_READY)
 			break;
 		keep_alive();
 	} while (timeval_ms() - ts_start < timeout_ms);
 
-	if (!(intflag & SAMD_NVM_INTFLAG_READY)) {
+	if (!(intflag & SAML_NVM_STATUS_READY)) {
 		LOG_ERROR("SAMD: NVM programming timed out");
 		return ERROR_FLASH_OPERATION_FAILED;
 	}
 
 	ret = target_read_u16(target,
-			SAMD_NVMCTRL + SAMD_NVMCTRL_STATUS, &status);
+			SAMD_NVMCTRL + SAML_NVM_INTFLAG, &status);
 	if (ret != ERROR_OK) {
 		LOG_ERROR("Can't read NVM status");
 		return ret;
@@ -554,7 +573,7 @@ static int samd_check_error(struct target *target)
 
 	/* Clear the error conditions by writing a one to them */
 	ret2 = target_write_u16(target,
-			SAMD_NVMCTRL + SAMD_NVMCTRL_STATUS, status);
+			SAMD_NVMCTRL + SAML_NVMCTRL_STATUS, status);
 	if (ret2 != ERROR_OK)
 		LOG_ERROR("Can't clear NVM error conditions");
 
@@ -592,8 +611,10 @@ static int samd_erase_row(struct target *target, uint32_t address)
 	int res;
 
 	/* Set an address contained in the row to be erased */
+	// res = target_write_u32(target,
+	// 		SAMD_NVMCTRL + SAMD_NVMCTRL_ADDR, address >> 1);
 	res = target_write_u32(target,
-			SAMD_NVMCTRL + SAMD_NVMCTRL_ADDR, address >> 1);
+			SAMD_NVMCTRL + SAML_NVMCTRL_ADDR, address >> 1);
 
 	/* Issue the Erase Row command to erase that row. */
 	if (res == ERROR_OK)
@@ -709,16 +730,16 @@ static int samd_modify_user_row_masked(struct target *target,
 		return res;
 
 	/* Check if we need to do manual page write commands */
-	res = target_read_u32(target, SAMD_NVMCTRL + SAMD_NVMCTRL_CTRLB, &nvm_ctrlb);
+	res = target_read_u32(target, SAMD_NVMCTRL + SAML_NVMCTRL_CTRLC, &nvm_ctrlb);
 	if (res == ERROR_OK)
-		manual_wp = (nvm_ctrlb & SAMD_NVM_CTRLB_MANW) != 0;
+		manual_wp = (nvm_ctrlb & SAML_NVM_CTRLC_MANW) != 0;
 	else {
 		LOG_ERROR("Read of NVM register CTRKB failed.");
 		return ERROR_FAIL;
 	}
 	if (manual_wp) {
 		/* Trigger flash write */
-		res = samd_issue_nvmctrl_command(target, SAMD_NVM_CMD_WAP);
+		res = samd_issue_nvmctrl_command(target, SAMD_NVM_CMD_WP);
 	} else {
 		res = samd_check_error(target);
 	}
@@ -849,12 +870,12 @@ static int samd_write(struct flash_bank *bank, const uint8_t *buffer,
 	}
 
 	/* Check if we need to do manual page write commands */
-	res = target_read_u32(bank->target, SAMD_NVMCTRL + SAMD_NVMCTRL_CTRLB, &nvm_ctrlb);
+	res = target_read_u32(bank->target, SAMD_NVMCTRL + SAML_NVMCTRL_CTRLC, &nvm_ctrlb);
 
 	if (res != ERROR_OK)
 		return res;
 
-	if (nvm_ctrlb & SAMD_NVM_CTRLB_MANW)
+	if (nvm_ctrlb & SAML_NVM_CTRLC_MANW)
 		manual_wp = true;
 	else
 		manual_wp = false;
