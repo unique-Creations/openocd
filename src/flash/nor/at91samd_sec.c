@@ -29,23 +29,17 @@
 #define SAMD_DSU_DID		0x18		/* Device ID register */
 #define SAMD_DSU_CTRL_EXT	0x100		/* CTRL register, external access */
 
-#define SAMD_NVMCTRL_CTRLA		0x00	/* NVM control A register */
-#define SAMD_NVMCTRL_CTRLA_SEC	0x1000	/* NVM control A register + 0x1000  */
+#define SAMD_NVMCTRL_CTRLA		0x1000	/* NVM control A register */
 #define SAMD_NVMCTRL_CTRLB		0x04	/* NVM control B register */
-#define SAML_NVMCTRL_CTRLC		0x08	/* NVM control C register */
-#define SAML_NVMCTRL_CTRLC_SEC	0x1008	/* NVM control C register + 0x1000 */
+#define SAML_NVMCTRL_CTRLC		0x1008	/* NVM control C register + 0x1000 */
 #define SAMD_NVMCTRL_PARAM		0x08	/* NVM parameters register */
-#define SAML_NVMCTRL_PARAM		0x24  	/* NVM parameters register */
-#define SAML_NVMCTRL_PARAM_SEC	0x1024  /* NVM parameters register + 0x1000 */
+#define SAML_NVMCTRL_PARAM		0x1024  /* NVM parameters register + 0x1000 */
 #define SAMD_NVMCTRL_INTFLAG	0x14	/* NVM Interrupt Flag Status & Clear */
-#define SAML_NVMCTRL_INTFLAG	0x14	/* NVM Interrupt Flag Status */
-#define SAML_NVMCTRL_INTFLAG_SEC 0x1014	/* NVM Interrupt Flag Status + 0x1000 */
+#define SAML_NVM_INTFLAG		0x1014	/* NVM Interrupt Flag Status + 0x1000 */
 #define SAMD_NVMCTRL_STATUS		0x18	/* NVM status register */
-#define SAML_NVMCTRL_STATUS		0x18	/* NVM status register */
-#define SAML_NVMCTRL_STATUS_SEC	0x1018	/* NVM status register + 0x1000 */
+#define SAML_NVMCTRL_STATUS		0x1018	/* NVM status register + 0x1000 */
 #define SAMD_NVMCTRL_ADDR		0x1C	/* NVM address register */
-#define SAML_NVMCTRL_ADDR		0x1C	/* NVM address register */
-#define SAML_NVMCTRL_ADDR_SEC	0x101C	/* NVM address register + 0x1000 */
+#define SAML_NVMCTRL_ADDR		0x101C	/* NVM address register + 0x1000 */
 #define SAMD_NVMCTRL_LOCK		0x20	/* NVM Lock section register */
 
 #define SAMD_CMDEX_KEY		0xA5UL
@@ -86,7 +80,6 @@
 #define SAMD_SERIES_10		0x02
 #define SAMD_SERIES_11		0x03
 #define SAMD_SERIES_09		0x04
-#define SAML_SERIES_10		0x04
 
 /* Device ID macros */
 #define SAMD_GET_PROCESSOR(id) (id >> 28)
@@ -357,7 +350,7 @@ static const struct samd_family samd_families[] = {
 	{ SAMD_PROCESSOR_M0, SAMD_FAMILY_D, SAMD_SERIES_11,
 		samd11_parts, ARRAY_SIZE(samd11_parts),
 		0xFFFF01FFFE01FF77ULL },
-	{ SAMD_PROCESSOR_M23, SAMD_FAMILY_L, SAML_SERIES_10,
+	{ SAMD_PROCESSOR_M23, SAMD_FAMILY_L, SAMD_SERIES_10,
 		saml10_parts, ARRAY_SIZE(saml10_parts),
 		0x1BFFFF00FFBFULL }, // TODO: update mask
 	{ SAMD_PROCESSOR_M23, SAMD_FAMILY_L, SAMD_SERIES_11,
@@ -451,6 +444,7 @@ static int samd_get_flash_page_info(struct target *target,
 {
 	int res;
 	uint32_t param;
+
 	//res = target_read_u32(target, SAMD_NVMCTRL + SAMD_NVMCTRL_PARAM, &param);
 	res = target_read_u32(target, SAMD_NVMCTRL + SAML_NVMCTRL_PARAM, &param);
 	if (res == ERROR_OK) {
@@ -562,7 +556,7 @@ static int samd_check_error(struct target *target)
 	}
 
 	ret = target_read_u16(target,
-			SAMD_NVMCTRL + SAML_NVMCTRL_INTFLAG, &status);
+			SAMD_NVMCTRL + SAML_NVM_INTFLAG, &status);
 	if (ret != ERROR_OK) {
 		LOG_ERROR("Can't read NVM status");
 		return ret;
